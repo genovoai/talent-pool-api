@@ -29,9 +29,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// Configure CORS - Allow all origins in development
+// Configure CORS - Allow all origins in both development and production for the demo
 app.use(cors({
-  origin: '*', // Allow all origins temporarily for testing
+  origin: '*', // Allow all origins for the demo
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization']
