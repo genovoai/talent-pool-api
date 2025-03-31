@@ -12,26 +12,15 @@ dotenv.config();
 // Initialize express app
 const app = express();
 
-// Connect to Database with error handling
-(async () => {
-  try {
-    await connectDB();
-    console.log('MongoDB connected successfully');
-  } catch (err) {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  }
-})();
-
 // Set up middleware
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
 
-// Configure CORS - Allow all origins in both development and production for the demo
+// Configure CORS - Allow all origins in development
 app.use(cors({
-  origin: '*', // Allow all origins for the demo
+  origin: '*', // Allow all origins temporarily for testing
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization']
@@ -44,15 +33,38 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Create uploads directory for resume storage
-const fs = require('fs');
-const dir = './uploads/resumes';
-if (!fs.existsSync(dir)) {
-  fs.mkdirSync(dir, { recursive: true });
-}
+// Health check endpoint that doesn't require DB
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    msg: 'API is running',
+    env: process.env.NODE_ENV,
+    timestamp: new Date().toISOString(),
+    db_status: global.mongoConnected ? 'connected' : 'not connected'
+  });
+});
 
-// Serve static files from the uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Database connection middleware
+app.use(async (req, res, next) => {
+  // Skip DB connection for health check
+  if (req.path === '/api/health') {
+    return next();
+  }
+
+  try {
+    if (!global.mongoConnected) {
+      console.log('Attempting to connect to MongoDB...');
+      await connectDB();
+      global.mongoConnected = true;
+    }
+    next();
+  } catch (err) {
+    console.error('Database connection error:', err);
+    return res.status(500).json({
+      error: 'Database connection failed',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
 
 // Require models (order matters)
 require('./models/User');
@@ -64,22 +76,16 @@ app.use('/api/talent', require('./routes/talent'));
 app.use('/api/recruiter', require('./routes/recruiter'));
 app.use('/api/profile', require('./routes/api/profile'));
 
-// Root route for API health check
-app.get('/', (req, res) => {
-  res.json({ 
-    msg: 'Talent Pool API is running',
-    env: process.env.NODE_ENV,
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Global error handler:', err);
   res.status(500).json({ 
     error: 'Something broke!',
     message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    details: process.env.NODE_ENV === 'development' ? {
+      stack: err.stack,
+      code: err.code
+    } : undefined
   });
 });
 
@@ -94,12 +100,16 @@ const PORT = process.env.PORT || 5050;
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
-  console.log(`Health check available at http://localhost:${PORT}`);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
+  console.error('Unhandled Promise Rejection:', {
+    name: err.name,
+    message: err.message,
+    code: err.code,
+    stack: err.stack
+  });
   // Don't exit the process in production
   if (process.env.NODE_ENV !== 'production') {
     server.close(() => process.exit(1));

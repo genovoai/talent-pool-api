@@ -6,12 +6,9 @@ const auth = async (req, res, next) => {
   // Get token from header
   const token = req.header('x-auth-token');
 
-  // Check if no token - for demo purposes, allow public access to protected routes
+  // Check if no token
   if (!token) {
-    console.log('Warning: No token provided, but allowing access for demo purposes');
-    // For demo, set a default user with admin privileges
-    req.user = { id: 'demo-user', role: 'admin' };
-    return next();
+    return res.status(401).json({ msg: 'No token, authorization denied' });
   }
 
   // Verify token
@@ -20,38 +17,41 @@ const auth = async (req, res, next) => {
     req.user = decoded.user;
     next();
   } catch (err) {
-    console.log('Warning: Invalid token, but allowing access for demo purposes');
-    // For demo, set a default user with admin privileges
-    req.user = { id: 'demo-user', role: 'admin' };
-    next();
+    res.status(401).json({ msg: 'Token is not valid' });
   }
 };
 
 // Check if user is a recruiter
 const recruiter = (req, res, next) => {
-  // For demo, skip actual auth check
-  if (!req.user) {
-    req.user = { id: 'demo-user', role: 'admin' };
-  }
-  next();
+  auth(req, res, () => {
+    if (req.user.role === 'recruiter' || req.user.role === 'admin') {
+      next();
+    } else {
+      res.status(403).json({ msg: 'Access denied. Recruiter role required.' });
+    }
+  });
 };
 
 // Check if user is a talent
 const talent = (req, res, next) => {
-  // For demo, skip actual auth check
-  if (!req.user) {
-    req.user = { id: 'demo-user', role: 'admin' };
-  }
-  next();
+  auth(req, res, () => {
+    if (req.user.role === 'talent' || req.user.role === 'admin') {
+      next();
+    } else {
+      res.status(403).json({ msg: 'Access denied. Talent role required.' });
+    }
+  });
 };
 
 // Check if user is an admin
 const admin = (req, res, next) => {
-  // For demo, skip actual auth check
-  if (!req.user) {
-    req.user = { id: 'demo-user', role: 'admin' };
-  }
-  next();
+  auth(req, res, () => {
+    if (req.user.role === 'admin') {
+      next();
+    } else {
+      res.status(403).json({ msg: 'Access denied. Admin role required.' });
+    }
+  });
 };
 
 module.exports = { auth, recruiter, talent, admin }; 
